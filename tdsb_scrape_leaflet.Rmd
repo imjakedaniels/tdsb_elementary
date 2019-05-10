@@ -1,0 +1,110 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Packages
+```{r}
+library(rvest)
+library(tidyverse)
+```
+
+# Scraper Design
+```{r}
+scrapy <- function(x){
+  page <- x
+  
+  rank <- page %>% read_html()  %>% html_nodes('.rating')  %>% html_nodes('.tdcell:nth-child(1)') %>% html_text() %>% as.data.frame()
+  
+  past_rank <- page %>% read_html()  %>% html_nodes('.rating')  %>% html_nodes('.tdcell:nth-child(2)') %>% html_text() %>% as.data.frame()
+  
+  trend <- page %>% read_html()  %>% html_nodes('.rating')  %>% html_nodes('.tdcell:nth-child(3)') %>% html_text() %>% as.data.frame()
+  
+  school <- page %>% read_html() %>% html_nodes('.rating') %>% html_nodes('.tdcell:nth-child(4)') %>% html_text() %>% as.data.frame()
+  
+  city <- page %>% read_html() %>% html_nodes('.rating') %>% html_nodes('.tdcell:nth-child(5)') %>% html_text() %>% as.data.frame()
+  
+  rating <- page %>% read_html()  %>% html_nodes('.rating') %>% html_nodes('.tdcell:nth-child(6)') %>% html_text() %>% as.data.frame()
+  
+  past_rating <- page %>% read_html()  %>% html_nodes('.rating') %>% html_nodes('.tdcell:nth-child(7)') %>% html_text() %>% as.data.frame()
+  
+  url <- "http://ontario.compareschoolrankings.org/elementary/SchoolsByRankLocationName.aspx" %>% read_html() %>% html_nodes('.rating') %>% html_nodes('.tdcell:nth-child(4)') %>% html_nodes('a') %>% html_attr('href') %>% as.data.frame()
+  
+  chart <- cbind(rank, past_rank, trend, school, city, rating, past_rating, url) 
+  names(chart) <- c("rank", "past_rank", "trend", "school", "city", "rating", "past_rating", "url")
+  chart <- as.tibble(chart)
+  return(chart)
+}
+
+elementary <- map_df("http://ontario.compareschoolrankings.org/elementary/SchoolsByRankLocationName.aspx", scrapy)
+
+```
+
+# Cleaning
+```{r}
+elementary <- elementary %>%
+  mutate(rank = as.numeric(str_remove(str_extract(as.character(rank), ".*/"), "/$")),
+         past_rank = ifelse(past_rank == "n/a", NA, past_rank),
+         trend = ifelse(trend == "n/a", NA, trend),
+         past_rating = ifelse(past_rating == "n/a", NA, past_rating),
+         rating = as.numeric(as.character(rating)),
+         school = as.character(school),
+         city = as.character(city),
+         url = as.character(paste0("http://ontario.compareschoolrankings.org", url)))
+```
+
+# Deeper Scrape and Join
+```{r}
+read_post<- function(x){
+  page <- x 
+  address <- read_html(page, options = "NOERROR") %>% html_nodes("td:nth-child(2) > div") %>% html_text() %>% str_extract("[0-9]+.*,") %>% str_remove("  [a-zA-Z]+,$") %>% as.data.frame()
+  date_scraped <-  Sys.Date()
+  
+  chart <- cbind(page, address, date_scraped)
+  names(chart) <- c("page", "address", "date_scraped")
+  chart <- as.tibble(chart)
+  
+  return(chart)
+  
+  Sys.sleep(5)
+}
+
+more_info <- map_df(elementary$url, read_post)
+
+elementary <- elementary %>%
+  inner_join(more_info, by = c("url" = "page")) 
+```
+
+# Adding geography
+```{r}
+school_locations <- read_csv("~/tdsb_elementary/School locations-all types data.csv")
+
+final_df <- elementary %>%
+  mutate(address = str_to_lower(str_extract(address, "[0-9]+.[a-zA-Z]+")),
+         id = str_to_lower(str_extract(school, "[a-zA-Z]+")),
+         id = paste(id, address)) %>%
+  inner_join(school_locations %>%
+               mutate(ADDRESS_FULL = str_to_lower(str_extract(ADDRESS_FULL, "[0-9]+.[a-zA-Z]+")),
+                      id = str_to_lower(str_extract(NAME, "[a-zA-Z]+")),
+                      id = paste(id, ADDRESS_FULL)), by = c("address" = "ADDRESS_FULL"))
+```
+
+# Leaflet
+```{r}
+library(leaflet)
+
+
+m <- leaflet(data = final_df) %>% addTiles() %>%
+  addCircleMarkers(
+    radius = ~ifelse(rating >=7, 6, 3),
+    color = ~ifelse(rating >=7, "green", "grey10"),
+    stroke = FALSE, fillOpacity = 0.5,
+    label=~as.character(paste(NAME, "/", SOURCE_ADDRESS, "/", MUNICIPALITY))
+  )
+
+htmlwidgets::saveWidget(
+  m, "index.html", libdir = "lib",
+  title = "Elementary School Map",
+  selfcontained = TRUE
+)
+```
