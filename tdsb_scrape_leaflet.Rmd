@@ -93,13 +93,12 @@ final_df <- elementary %>%
 ```{r}
 library(leaflet)
 
-
 m <- leaflet(data = final_df) %>% addTiles() %>%
   addCircleMarkers(
-    radius = ~ifelse(rating >=7, 6, 3),
-    color = ~ifelse(rating >=7, "green", "grey10"),
+    radius = ~rating,
+    color = ~ifelse(rating >=7.5, "green", "grey10"),
     stroke = FALSE, fillOpacity = 0.5,
-    label=~as.character(paste(NAME, "/", SOURCE_ADDRESS, "/", MUNICIPALITY))
+    label=~as.character(paste(NAME, "-", rating, "/", SOURCE_ADDRESS, "/", MUNICIPALITY))
   )
 
 htmlwidgets::saveWidget(
@@ -108,3 +107,16 @@ htmlwidgets::saveWidget(
   selfcontained = TRUE
 )
 ```
+
+```
+<meta name="twitter:card" content="player"/>
+<meta name="twitter:site" content="@datajake"/>
+<meta name="twitter:creator" content="@datajake"/>
+<meta name="twitter:title" content="TDSB: Elementary School Ratings"/>
+<meta name="twitter:description" content="Ratings by Fraser Institute - Locations from Open Data Toronto - Built by Jake Daniels - Powered by Github"/>
+<meta name="twitter:player" content="https://rawcdn.githack.com/imjakedaniels/tdsb_elementary/0682c64adb5e4f2fcb10726b4e3fcfb18aebcfd3/index.html"/>
+<meta name="twitter:player:width" content="517"/>
+<meta name="twitter:player:height" content="408"/>
+<meta name="twitter:image" content="http://ontario.compareschoolrankings.org/images/fi_logo_for_header.jpg">
+```
+
